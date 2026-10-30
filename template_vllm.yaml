@@ -5,8 +5,8 @@ zabbix_export:
       name: Templates/Applications
   templates:
     - uuid: 5a4a0e6467504d9cad8cfbf615e018a3
-      template: 'LLM API'
-      name: 'LLM API'
+      template: vLLM
+      name: vLLM
       description: 'vLLM (OpenAI-compatible) server: Prometheus /metrics, /health and {$VLLM.TEST.PATH} checks.'
       groups:
         - name: Templates/Applications
@@ -30,7 +30,7 @@ zabbix_export:
             key: vllm.health.raw
           triggers:
             - uuid: a9c4ba048e61472a9b9096801a68ed24
-              expression: 'max(/LLM API/vllm.health,5m)=0'
+              expression: 'max(/vLLM/vllm.health,5m)=0'
               name: '/health endpoint unavailable for 5 minutes. Check the vLLM process on the host.'
               event_name: 'vLLM: server does not respond (/health)'
               priority: DISASTER
@@ -58,7 +58,7 @@ zabbix_export:
             key: vllm.metrics.raw
           triggers:
             - uuid: 371e04a6c5d74815a952981e79fb9511
-              expression: 'last(/LLM API/vllm.kv_cache.usage)>{$VLLM.KV.MAX}'
+              expression: 'last(/vLLM/vllm.kv_cache.usage)>{$VLLM.KV.MAX}'
               name: 'KV-cache is nearly full — preemptions and admission rejections may occur.'
               event_name: 'vLLM: KV-cache > {$VLLM.KV.MAX}%'
               priority: WARNING
@@ -84,7 +84,7 @@ zabbix_export:
             key: vllm.test.raw
           triggers:
             - uuid: 5c69b789c66444718cea3ab5353d7e8f
-              expression: 'last(/LLM API/vllm.models.count)=0'
+              expression: last(/vLLM/vllm.models.count)=0
               name: '/v1/models returned an empty model list.'
               event_name: 'vLLM: no models loaded'
               priority: AVERAGE
@@ -139,7 +139,7 @@ zabbix_export:
             key: vllm.metrics.raw
           triggers:
             - uuid: 939c480e5582425082279f47d5c176f9
-              expression: 'avg(/LLM API/vllm.requests.waiting,5m)>{$VLLM.QUEUE.MAX}'
+              expression: 'avg(/vLLM/vllm.requests.waiting,5m)>{$VLLM.QUEUE.MAX}'
               name: 'Average request queue length is above the {$VLLM.QUEUE.MAX} threshold.'
               event_name: 'vLLM: request queue backlog (> {$VLLM.QUEUE.MAX})'
               priority: WARNING
@@ -222,7 +222,7 @@ zabbix_export:
                 key: vllm.test.raw
               trigger_prototypes:
                 - uuid: e99588677e4f499e91ecda22fe474cad
-                  expression: 'find(/LLM API/vllm.model.ctx[{#MODELID}],,"eq","0")=1'
+                  expression: 'find(/vLLM/vllm.model.ctx[{#MODELID}],,"eq","0")=1'
                   name: 'Model {#MODELID} disappeared from /v1/models.'
                   event_name: 'vLLM: model {#MODELID} unloaded'
                   priority: AVERAGE
@@ -318,12 +318,12 @@ zabbix_export:
               newvalue: Up
   triggers:
     - uuid: 6109bdfde82e42d1b5da533a89f58a83
-      expression: 'max(/LLM API/vllm.test,5m)=0 and last(/LLM API/vllm.health)=1'
+      expression: 'max(/vLLM/vllm.test,5m)=0 and last(/vLLM/vllm.health)=1'
       name: '/health responds but {$VLLM.TEST.PATH} fails — server is up but cannot process requests.'
       event_name: 'vLLM: API not responding (/health alive)'
       priority: HIGH
     - uuid: 8050383bed1643d692883001c2b16434
-      expression: 'last(/LLM API/net.tcp.service[http,,{$VLLM.PORT}])=0 and max(/LLM API/vllm.health,5m)>0'
+      expression: 'last(/vLLM/net.tcp.service[http,,{$VLLM.PORT}])=0 and max(/vLLM/vllm.health,5m)>0'
       name: 'Service TCP port is closed while /health answered recently (server process died, not the network). A pure network/host outage will only fire ''server does not respond (/health)''.'
       event_name: 'vLLM: port {$VLLM.PORT} unreachable'
       priority: DISASTER
@@ -333,19 +333,19 @@ zabbix_export:
       graph_items:
         - color: FF8000
           item:
-            host: 'LLM API'
+            host: vLLM
             key: vllm.kv_cache.usage
     - uuid: cf7ed0bb974b4ae5b6f46400314a66d4
       name: 'vLLM: requests and queue'
       graph_items:
         - color: 00C800
           item:
-            host: 'LLM API'
+            host: vLLM
             key: vllm.requests.running
         - sortorder: '1'
           color: FF3333
           item:
-            host: 'LLM API'
+            host: vLLM
             key: vllm.requests.waiting
     - uuid: 4d98b6916e2345f5813dd190a13733cf
       name: 'vLLM: tokens/sec'
@@ -353,11 +353,11 @@ zabbix_export:
         - color: 0000FF
           calc_fnc: ALL
           item:
-            host: 'LLM API'
+            host: vLLM
             key: vllm.tokens.prompt
         - sortorder: '1'
           color: C800C8
           calc_fnc: ALL
           item:
-            host: 'LLM API'
+            host: vLLM
             key: vllm.tokens.generation

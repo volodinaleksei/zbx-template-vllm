@@ -1,4 +1,4 @@
-# Zabbix template: vLLM (LLM API)
+# Zabbix template: vLLM
 
 Monitoring for [vLLM](https://github.com/vllm-project/vllm) OpenAI-compatible servers via Zabbix 7.x.
 
