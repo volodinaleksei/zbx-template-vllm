@@ -1,0 +1,363 @@
+zabbix_export:
+  version: '7.4'
+  template_groups:
+    - uuid: a571c0d144b14fd4a87a9d9b2aa9fcd6
+      name: Templates/Applications
+  templates:
+    - uuid: 5a4a0e6467504d9cad8cfbf615e018a3
+      template: 'LLM API'
+      name: 'LLM API'
+      description: 'vLLM (OpenAI-совместимый) сервер: метрики Prometheus /metrics, checks /health и {$VLLM.TEST.PATH}.'
+      groups:
+        - name: Templates/Applications
+      items:
+        - uuid: 004cf3560e8d483da51f1d6fadcb3098
+          name: 'vLLM: API порт'
+          type: SIMPLE
+          key: 'net.tcp.service[http,,{$VLLM.PORT}]'
+          history: 90d
+        - uuid: 7a51558a54124953a1339daec8cf8bce
+          name: 'Сервер отвечает (/health)'
+          type: DEPENDENT
+          key: vllm.health
+          history: 7d
+          value_type: FLOAT
+          preprocessing:
+            - type: JAVASCRIPT
+              parameters:
+                - 'return 1;'
+          master_item:
+            key: vllm.health.raw
+          triggers:
+            - uuid: a9c4ba048e61472a9b9096801a68ed24
+              expression: 'max(/LLM API/vllm.health,5m)=0'
+              name: 'Эндпоинт /health недоступен 5 минут. Проверьте процесс vLLM на хосте.'
+              event_name: 'vLLM: сервер не отвечает (/health)'
+              priority: DISASTER
+        - uuid: f9bcc2071e6a49b8882a671b3bebe61d
+          name: 'Сырой ответ /health'
+          type: HTTP_AGENT
+          key: vllm.health.raw
+          delay: 30s
+          history: '0'
+          value_type: TEXT
+          timeout: 15s
+          url: 'http://{HOST.CONN}:{$VLLM.PORT}/health'
+        - uuid: 0815be3dc1024d36ade29656da7a57cb
+          name: 'KV-cache занятость'
+          type: DEPENDENT
+          key: vllm.kv_cache.usage
+          history: 7d
+          value_type: FLOAT
+          units: '%'
+          preprocessing:
+            - type: JAVASCRIPT
+              parameters:
+                - 'var m = /^vllm:kv_cache_usage_perc\{[^}]*\}\s+([0-9eE.+\-]+)$/m.exec(value); return m ? parseFloat(m[1]) * 100 : 0;'
+          master_item:
+            key: vllm.metrics.raw
+          triggers:
+            - uuid: 371e04a6c5d74815a952981e79fb9511
+              expression: 'last(/LLM API/vllm.kv_cache.usage)>{$VLLM.KV.MAX}'
+              name: 'KV-cache почти полон — возможны преemption''ы и отказы приёма запросов.'
+              event_name: 'vLLM: KV-cache > {$VLLM.KV.MAX}%'
+              priority: WARNING
+        - uuid: fe63ca45a5264f6a949ae5766743b172
+          name: 'Сырой ответ /metrics (Prometheus)'
+          type: HTTP_AGENT
+          key: vllm.metrics.raw
+          history: '0'
+          value_type: TEXT
+          timeout: 15s
+          url: 'http://{HOST.CONN}:{$VLLM.PORT}{$VLLM.METRICS.PATH}'
+        - uuid: 5440f976bf2e42b891247e2dfa022b88
+          name: 'Загружено моделей'
+          type: DEPENDENT
+          key: vllm.models.count
+          history: 7d
+          value_type: FLOAT
+          preprocessing:
+            - type: JAVASCRIPT
+              parameters:
+                - 'var d = JSON.parse(value); return d.data ? d.data.length : 0;'
+          master_item:
+            key: vllm.test.raw
+          triggers:
+            - uuid: 5c69b789c66444718cea3ab5353d7e8f
+              expression: 'last(/LLM API/vllm.models.count)=0'
+              name: '/v1/models вернул пустой список моделей.'
+              event_name: 'vLLM: нет загруженных моделей'
+              priority: AVERAGE
+        - uuid: 4f997fcfbe1b4c2ab9cec65f95271b05
+          name: 'Преemption''ы запросов'
+          type: DEPENDENT
+          key: vllm.preemptions
+          history: 7d
+          value_type: FLOAT
+          preprocessing:
+            - type: JAVASCRIPT
+              parameters:
+                - 'var re = /^vllm:num_preemptions_total\{[^}]*\}\s+([0-9eE.+\-]+)$/mg; var t = 0, m; while ((m = re.exec(value)) !== null) t += parseFloat(m[1]); return t;'
+          master_item:
+            key: vllm.metrics.raw
+        - uuid: a0d7c93e44d649cfb19beeb2843b1858
+          name: 'Память процесса (RSS)'
+          type: DEPENDENT
+          key: vllm.process.rss
+          history: 7d
+          value_type: FLOAT
+          units: bytes
+          preprocessing:
+            - type: JAVASCRIPT
+              parameters:
+                - 'var m = /^process_resident_memory_bytes\s+([0-9eE.+\-]+)$/m.exec(value); return m ? m[1] : 0;'
+          master_item:
+            key: vllm.metrics.raw
+        - uuid: 247186c897cb4a2e8e51201736ff7aa7
+          name: 'Запросов в обработке'
+          type: DEPENDENT
+          key: vllm.requests.running
+          history: 7d
+          value_type: FLOAT
+          preprocessing:
+            - type: JAVASCRIPT
+              parameters:
+                - 'var re = /^vllm:num_requests_running\{[^}]*\}\s+([0-9eE.+\-]+)$/mg; var t = 0, m; while ((m = re.exec(value)) !== null) t += parseFloat(m[1]); return t;'
+          master_item:
+            key: vllm.metrics.raw
+        - uuid: 0da5e97a650d49b3a5d753b3cd305d10
+          name: 'Запросов в очереди'
+          type: DEPENDENT
+          key: vllm.requests.waiting
+          history: 7d
+          value_type: FLOAT
+          preprocessing:
+            - type: JAVASCRIPT
+              parameters:
+                - 'var re = /^vllm:num_requests_waiting\{[^}]*\}\s+([0-9eE.+\-]+)$/mg; var t = 0, m; while ((m = re.exec(value)) !== null) t += parseFloat(m[1]); return t;'
+          master_item:
+            key: vllm.metrics.raw
+          triggers:
+            - uuid: 939c480e5582425082279f47d5c176f9
+              expression: 'avg(/LLM API/vllm.requests.waiting,5m)>{$VLLM.QUEUE.MAX}'
+              name: 'Средняя длина очереди запросов выше порога {$VLLM.QUEUE.MAX}.'
+              event_name: 'vLLM: затор очереди (> {$VLLM.QUEUE.MAX})'
+              priority: WARNING
+        - uuid: 58a9f560453847399bc0852eeff1c39b
+          name: 'API отвечает ({$VLLM.TEST.PATH})'
+          type: DEPENDENT
+          key: vllm.test
+          history: 7d
+          value_type: FLOAT
+          preprocessing:
+            - type: JAVASCRIPT
+              parameters:
+                - 'return 1;'
+          master_item:
+            key: vllm.test.raw
+        - uuid: b7988a7546694c7ba9070d197155ab3b
+          name: 'Сырой ответ {$VLLM.TEST.PATH} (проверка API)'
+          type: HTTP_AGENT
+          key: vllm.test.raw
+          delay: 5m
+          history: '0'
+          value_type: TEXT
+          timeout: 15s
+          url: 'http://{HOST.CONN}:{$VLLM.PORT}{$VLLM.TEST.PATH}'
+        - uuid: 470c9ee5f6a34f94b5c2ae25ee4d9bc1
+          name: 'Generation токенов (всего)'
+          type: DEPENDENT
+          key: vllm.tokens.generation
+          history: 7d
+          value_type: FLOAT
+          preprocessing:
+            - type: JAVASCRIPT
+              parameters:
+                - 'var re = /^vllm:generation_tokens_total\{[^}]*\}\s+([0-9eE.+\-]+)$/mg; var t = 0, m; while ((m = re.exec(value)) !== null) t += parseFloat(m[1]); return t;'
+          master_item:
+            key: vllm.metrics.raw
+        - uuid: 4d82b69477cd40c0a91e46158fcd36ed
+          name: 'Prompt токенов (всего)'
+          type: DEPENDENT
+          key: vllm.tokens.prompt
+          history: 7d
+          value_type: FLOAT
+          preprocessing:
+            - type: JAVASCRIPT
+              parameters:
+                - 'var re = /^vllm:prompt_tokens_total\{[^}]*\}\s+([0-9eE.+\-]+)$/mg; var t = 0, m; while ((m = re.exec(value)) !== null) t += parseFloat(m[1]); return t;'
+          master_item:
+            key: vllm.metrics.raw
+        - uuid: b525977132cd43e1af14c1fef2af754c
+          name: 'TTFT среднее'
+          type: DEPENDENT
+          key: vllm.ttft.avg
+          history: 7d
+          value_type: FLOAT
+          units: s
+          preprocessing:
+            - type: JAVASCRIPT
+              parameters:
+                - 'var ss = 0, c = 0, m; var re1 = /^vllm:time_to_first_token_seconds_sum\{[^}]*\}\s+([0-9eE.+\-]+)$/mg; while ((m = re1.exec(value)) !== null) ss += parseFloat(m[1]); var re2 = /^vllm:time_to_first_token_seconds_count\{[^}]*\}\s+([0-9eE.+\-]+)$/mg; while ((m = re2.exec(value)) !== null) c += parseFloat(m[1]); return c > 0 ? ss / c : 0;'
+          master_item:
+            key: vllm.metrics.raw
+      discovery_rules:
+        - uuid: 826683cda7e344de84b9eb36487310e8
+          name: 'Модели vLLM'
+          type: DEPENDENT
+          key: vllm.model.discovery
+          item_prototypes:
+            - uuid: 77feeb457e4a42eba5ffbce09277d96e
+              name: 'Контекст модели {#MODELID}'
+              type: DEPENDENT
+              key: 'vllm.model.ctx[{#MODELID}]'
+              history: 7d
+              value_type: FLOAT
+              units: tok
+              preprocessing:
+                - type: JAVASCRIPT
+                  parameters:
+                    - 'var d = JSON.parse(value).data.filter(function(m){return m.id === "{#MODELID}";}); return d.length && d[0].max_model_len ? d[0].max_model_len : 0;'
+              master_item:
+                key: vllm.test.raw
+              trigger_prototypes:
+                - uuid: e99588677e4f499e91ecda22fe474cad
+                  expression: 'find(/LLM API/vllm.model.ctx[{#MODELID}],,"eq","0")=1'
+                  name: 'Модель {#MODELID} пропала из /v1/models.'
+                  event_name: 'vLLM: модель {#MODELID} выгружена'
+                  priority: AVERAGE
+            - uuid: 5e8a2995e76448a59e1e7ce6c0b0c6d8
+              name: '{#MODELID}: в обработке'
+              type: DEPENDENT
+              key: 'vllm.model.run[{#MODELID}]'
+              history: 7d
+              value_type: FLOAT
+              preprocessing:
+                - type: JAVASCRIPT
+                  parameters:
+                    - 'var re = /^vllm:num_requests_running\{[^}]*model_name="{#MODELID}"[^}]*\}\s+([0-9eE.+\-]+)$/mg; var t = 0, m; while ((m = re.exec(value)) !== null) t += parseFloat(m[1]); return t;'
+              master_item:
+                key: vllm.metrics.raw
+            - uuid: df59ed19c6f54824909e7e61fc07642c
+              name: '{#MODELID}: успешных запросов'
+              type: DEPENDENT
+              key: 'vllm.model.success[{#MODELID}]'
+              history: 7d
+              value_type: FLOAT
+              preprocessing:
+                - type: JAVASCRIPT
+                  parameters:
+                    - 'var re = /^vllm:request_success_total\{[^}]*model_name="{#MODELID}"[^}]*\}\s+([0-9eE.+\-]+)$/mg; var t = 0, m; while ((m = re.exec(value)) !== null) t += parseFloat(m[1]); return t;'
+              master_item:
+                key: vllm.metrics.raw
+            - uuid: cd7262db435b45a29e23a26b96fe9f0e
+              name: '{#MODELID}: generation токенов'
+              type: DEPENDENT
+              key: 'vllm.model.tok.gen[{#MODELID}]'
+              history: 7d
+              value_type: FLOAT
+              preprocessing:
+                - type: JAVASCRIPT
+                  parameters:
+                    - 'var re = /^vllm:generation_tokens_total\{[^}]*model_name="{#MODELID}"[^}]*\}\s+([0-9eE.+\-]+)$/mg; var t = 0, m; while ((m = re.exec(value)) !== null) t += parseFloat(m[1]); return t;'
+              master_item:
+                key: vllm.metrics.raw
+            - uuid: 47f23c8ea4e047cb98346a1f00325710
+              name: '{#MODELID}: prompt токенов'
+              type: DEPENDENT
+              key: 'vllm.model.tok.prompt[{#MODELID}]'
+              history: 7d
+              value_type: FLOAT
+              preprocessing:
+                - type: JAVASCRIPT
+                  parameters:
+                    - 'var re = /^vllm:prompt_tokens_total\{[^}]*model_name="{#MODELID}"[^}]*\}\s+([0-9eE.+\-]+)$/mg; var t = 0, m; while ((m = re.exec(value)) !== null) t += parseFloat(m[1]); return t;'
+              master_item:
+                key: vllm.metrics.raw
+            - uuid: 4e64d96aab324efdb862b44057e835f0
+              name: '{#MODELID}: в очереди'
+              type: DEPENDENT
+              key: 'vllm.model.wait[{#MODELID}]'
+              history: 7d
+              value_type: FLOAT
+              preprocessing:
+                - type: JAVASCRIPT
+                  parameters:
+                    - 'var re = /^vllm:num_requests_waiting\{[^}]*model_name="{#MODELID}"[^}]*\}\s+([0-9eE.+\-]+)$/mg; var t = 0, m; while ((m = re.exec(value)) !== null) t += parseFloat(m[1]); return t;'
+              master_item:
+                key: vllm.metrics.raw
+          master_item:
+            key: vllm.test.raw
+          preprocessing:
+            - type: JAVASCRIPT
+              parameters:
+                - 'var d = JSON.parse(value).data; var out = []; for (var i = 0; i < d.length; i++) out.push({"{#MODELID}": d[i].id, "{#MODELROOT}": (d[i].root || d[i].id)}); return JSON.stringify(out);'
+      macros:
+        - macro: '{$VLLM.KV.MAX}'
+          value: '90'
+          description: 'Порог предупреждения: занятость KV-cache, %'
+        - macro: '{$VLLM.METRICS.PATH}'
+          value: /metrics
+          description: 'Путь Prometheus-метрик'
+        - macro: '{$VLLM.PORT}'
+          value: '8000'
+          description: 'Порт сервера vLLM'
+        - macro: '{$VLLM.QUEUE.MAX}'
+          value: '5'
+          description: 'Порог предупреждения: длина очереди запросов'
+        - macro: '{$VLLM.TEST.PATH}'
+          value: /v1/models
+          description: 'Путь функциональной проверки'
+      valuemaps:
+        - uuid: e809cd3e43d74a2a86628409a625bb95
+          name: 'Service state'
+          mappings:
+            - value: '0'
+              newvalue: Down
+            - value: '1'
+              newvalue: Up
+  triggers:
+    - uuid: 6109bdfde82e42d1b5da533a89f58a83
+      expression: 'max(/LLM API/vllm.test,5m)=0 and last(/LLM API/vllm.health)=1'
+      name: '/health отвечает, но {$VLLM.TEST.PATH} — сервер запущен, но обрабатывать запросы не может.'
+      event_name: 'vLLM: API не отвечает (/health живой)'
+      priority: HIGH
+    - uuid: 8050383bed1643d692883001c2b16434
+      expression: 'last(/LLM API/net.tcp.service[http,,{$VLLM.PORT}])=0 and max(/LLM API/vllm.health,5m)>0'
+      name: 'TCP-порт сервиса закрыт, при этом /health недавно отвечал (сервер умер, а не сеть). Чистый отказ сети/хоста даст только срабатывание ''сервер не отвечает (/health)''.'
+      event_name: 'vLLM: порт {$VLLM.PORT} недоступен'
+      priority: DISASTER
+  graphs:
+    - uuid: 1e22ce6dd614454281b6f9c57ffb6de7
+      name: 'vLLM: KV-cache занятость'
+      graph_items:
+        - color: FF8000
+          item:
+            host: 'LLM API'
+            key: vllm.kv_cache.usage
+    - uuid: cf7ed0bb974b4ae5b6f46400314a66d4
+      name: 'vLLM: запросы и очередь'
+      graph_items:
+        - color: 00C800
+          item:
+            host: 'LLM API'
+            key: vllm.requests.running
+        - sortorder: '1'
+          color: FF3333
+          item:
+            host: 'LLM API'
+            key: vllm.requests.waiting
+    - uuid: 4d98b6916e2345f5813dd190a13733cf
+      name: 'vLLM: токены/сек'
+      graph_items:
+        - color: 0000FF
+          calc_fnc: ALL
+          item:
+            host: 'LLM API'
+            key: vllm.tokens.prompt
+        - sortorder: '1'
+          color: C800C8
+          calc_fnc: ALL
+          item:
+            host: 'LLM API'
+            key: vllm.tokens.generation
