@@ -7,17 +7,17 @@ zabbix_export:
     - uuid: 5a4a0e6467504d9cad8cfbf615e018a3
       template: 'LLM API'
       name: 'LLM API'
-      description: 'vLLM (OpenAI-совместимый) сервер: метрики Prometheus /metrics, checks /health и {$VLLM.TEST.PATH}.'
+      description: 'vLLM (OpenAI-compatible) server: Prometheus /metrics, /health and {$VLLM.TEST.PATH} checks.'
       groups:
         - name: Templates/Applications
       items:
         - uuid: 004cf3560e8d483da51f1d6fadcb3098
-          name: 'vLLM: API порт'
+          name: 'vLLM: API port'
           type: SIMPLE
           key: 'net.tcp.service[http,,{$VLLM.PORT}]'
           history: 90d
         - uuid: 7a51558a54124953a1339daec8cf8bce
-          name: 'Сервер отвечает (/health)'
+          name: 'Server responds (/health)'
           type: DEPENDENT
           key: vllm.health
           history: 7d
@@ -31,11 +31,11 @@ zabbix_export:
           triggers:
             - uuid: a9c4ba048e61472a9b9096801a68ed24
               expression: 'max(/LLM API/vllm.health,5m)=0'
-              name: 'Эндпоинт /health недоступен 5 минут. Проверьте процесс vLLM на хосте.'
-              event_name: 'vLLM: сервер не отвечает (/health)'
+              name: '/health endpoint unavailable for 5 minutes. Check the vLLM process on the host.'
+              event_name: 'vLLM: server does not respond (/health)'
               priority: DISASTER
         - uuid: f9bcc2071e6a49b8882a671b3bebe61d
-          name: 'Сырой ответ /health'
+          name: '/health raw response'
           type: HTTP_AGENT
           key: vllm.health.raw
           delay: 30s
@@ -44,7 +44,7 @@ zabbix_export:
           timeout: 15s
           url: 'http://{HOST.CONN}:{$VLLM.PORT}/health'
         - uuid: 0815be3dc1024d36ade29656da7a57cb
-          name: 'KV-cache занятость'
+          name: 'KV-cache usage'
           type: DEPENDENT
           key: vllm.kv_cache.usage
           history: 7d
@@ -59,11 +59,11 @@ zabbix_export:
           triggers:
             - uuid: 371e04a6c5d74815a952981e79fb9511
               expression: 'last(/LLM API/vllm.kv_cache.usage)>{$VLLM.KV.MAX}'
-              name: 'KV-cache почти полон — возможны преemption''ы и отказы приёма запросов.'
+              name: 'KV-cache is nearly full — preemptions and admission rejections may occur.'
               event_name: 'vLLM: KV-cache > {$VLLM.KV.MAX}%'
               priority: WARNING
         - uuid: fe63ca45a5264f6a949ae5766743b172
-          name: 'Сырой ответ /metrics (Prometheus)'
+          name: '/metrics raw response (Prometheus)'
           type: HTTP_AGENT
           key: vllm.metrics.raw
           history: '0'
@@ -71,7 +71,7 @@ zabbix_export:
           timeout: 15s
           url: 'http://{HOST.CONN}:{$VLLM.PORT}{$VLLM.METRICS.PATH}'
         - uuid: 5440f976bf2e42b891247e2dfa022b88
-          name: 'Загружено моделей'
+          name: 'Models loaded'
           type: DEPENDENT
           key: vllm.models.count
           history: 7d
@@ -85,11 +85,11 @@ zabbix_export:
           triggers:
             - uuid: 5c69b789c66444718cea3ab5353d7e8f
               expression: 'last(/LLM API/vllm.models.count)=0'
-              name: '/v1/models вернул пустой список моделей.'
-              event_name: 'vLLM: нет загруженных моделей'
+              name: '/v1/models returned an empty model list.'
+              event_name: 'vLLM: no models loaded'
               priority: AVERAGE
         - uuid: 4f997fcfbe1b4c2ab9cec65f95271b05
-          name: 'Преemption''ы запросов'
+          name: 'Request preemptions'
           type: DEPENDENT
           key: vllm.preemptions
           history: 7d
@@ -101,7 +101,7 @@ zabbix_export:
           master_item:
             key: vllm.metrics.raw
         - uuid: a0d7c93e44d649cfb19beeb2843b1858
-          name: 'Память процесса (RSS)'
+          name: 'Process memory (RSS)'
           type: DEPENDENT
           key: vllm.process.rss
           history: 7d
@@ -114,7 +114,7 @@ zabbix_export:
           master_item:
             key: vllm.metrics.raw
         - uuid: 247186c897cb4a2e8e51201736ff7aa7
-          name: 'Запросов в обработке'
+          name: 'Requests in flight'
           type: DEPENDENT
           key: vllm.requests.running
           history: 7d
@@ -126,7 +126,7 @@ zabbix_export:
           master_item:
             key: vllm.metrics.raw
         - uuid: 0da5e97a650d49b3a5d753b3cd305d10
-          name: 'Запросов в очереди'
+          name: 'Requests queued'
           type: DEPENDENT
           key: vllm.requests.waiting
           history: 7d
@@ -140,11 +140,11 @@ zabbix_export:
           triggers:
             - uuid: 939c480e5582425082279f47d5c176f9
               expression: 'avg(/LLM API/vllm.requests.waiting,5m)>{$VLLM.QUEUE.MAX}'
-              name: 'Средняя длина очереди запросов выше порога {$VLLM.QUEUE.MAX}.'
-              event_name: 'vLLM: затор очереди (> {$VLLM.QUEUE.MAX})'
+              name: 'Average request queue length is above the {$VLLM.QUEUE.MAX} threshold.'
+              event_name: 'vLLM: request queue backlog (> {$VLLM.QUEUE.MAX})'
               priority: WARNING
         - uuid: 58a9f560453847399bc0852eeff1c39b
-          name: 'API отвечает ({$VLLM.TEST.PATH})'
+          name: 'API responds ({$VLLM.TEST.PATH})'
           type: DEPENDENT
           key: vllm.test
           history: 7d
@@ -156,7 +156,7 @@ zabbix_export:
           master_item:
             key: vllm.test.raw
         - uuid: b7988a7546694c7ba9070d197155ab3b
-          name: 'Сырой ответ {$VLLM.TEST.PATH} (проверка API)'
+          name: '{$VLLM.TEST.PATH} raw response (API check)'
           type: HTTP_AGENT
           key: vllm.test.raw
           delay: 5m
@@ -165,7 +165,7 @@ zabbix_export:
           timeout: 15s
           url: 'http://{HOST.CONN}:{$VLLM.PORT}{$VLLM.TEST.PATH}'
         - uuid: 470c9ee5f6a34f94b5c2ae25ee4d9bc1
-          name: 'Generation токенов (всего)'
+          name: 'Generation tokens (total)'
           type: DEPENDENT
           key: vllm.tokens.generation
           history: 7d
@@ -177,7 +177,7 @@ zabbix_export:
           master_item:
             key: vllm.metrics.raw
         - uuid: 4d82b69477cd40c0a91e46158fcd36ed
-          name: 'Prompt токенов (всего)'
+          name: 'Prompt tokens (total)'
           type: DEPENDENT
           key: vllm.tokens.prompt
           history: 7d
@@ -189,7 +189,7 @@ zabbix_export:
           master_item:
             key: vllm.metrics.raw
         - uuid: b525977132cd43e1af14c1fef2af754c
-          name: 'TTFT среднее'
+          name: 'Average TTFT'
           type: DEPENDENT
           key: vllm.ttft.avg
           history: 7d
@@ -203,12 +203,12 @@ zabbix_export:
             key: vllm.metrics.raw
       discovery_rules:
         - uuid: 826683cda7e344de84b9eb36487310e8
-          name: 'Модели vLLM'
+          name: 'vLLM models'
           type: DEPENDENT
           key: vllm.model.discovery
           item_prototypes:
             - uuid: 77feeb457e4a42eba5ffbce09277d96e
-              name: 'Контекст модели {#MODELID}'
+              name: 'Model {#MODELID} context size'
               type: DEPENDENT
               key: 'vllm.model.ctx[{#MODELID}]'
               history: 7d
@@ -223,11 +223,11 @@ zabbix_export:
               trigger_prototypes:
                 - uuid: e99588677e4f499e91ecda22fe474cad
                   expression: 'find(/LLM API/vllm.model.ctx[{#MODELID}],,"eq","0")=1'
-                  name: 'Модель {#MODELID} пропала из /v1/models.'
-                  event_name: 'vLLM: модель {#MODELID} выгружена'
+                  name: 'Model {#MODELID} disappeared from /v1/models.'
+                  event_name: 'vLLM: model {#MODELID} unloaded'
                   priority: AVERAGE
             - uuid: 5e8a2995e76448a59e1e7ce6c0b0c6d8
-              name: '{#MODELID}: в обработке'
+              name: '{#MODELID}: requests in flight'
               type: DEPENDENT
               key: 'vllm.model.run[{#MODELID}]'
               history: 7d
@@ -239,7 +239,7 @@ zabbix_export:
               master_item:
                 key: vllm.metrics.raw
             - uuid: df59ed19c6f54824909e7e61fc07642c
-              name: '{#MODELID}: успешных запросов'
+              name: '{#MODELID}: successful requests'
               type: DEPENDENT
               key: 'vllm.model.success[{#MODELID}]'
               history: 7d
@@ -251,7 +251,7 @@ zabbix_export:
               master_item:
                 key: vllm.metrics.raw
             - uuid: cd7262db435b45a29e23a26b96fe9f0e
-              name: '{#MODELID}: generation токенов'
+              name: '{#MODELID}: generation tokens'
               type: DEPENDENT
               key: 'vllm.model.tok.gen[{#MODELID}]'
               history: 7d
@@ -263,7 +263,7 @@ zabbix_export:
               master_item:
                 key: vllm.metrics.raw
             - uuid: 47f23c8ea4e047cb98346a1f00325710
-              name: '{#MODELID}: prompt токенов'
+              name: '{#MODELID}: prompt tokens'
               type: DEPENDENT
               key: 'vllm.model.tok.prompt[{#MODELID}]'
               history: 7d
@@ -275,7 +275,7 @@ zabbix_export:
               master_item:
                 key: vllm.metrics.raw
             - uuid: 4e64d96aab324efdb862b44057e835f0
-              name: '{#MODELID}: в очереди'
+              name: '{#MODELID}: requests queued'
               type: DEPENDENT
               key: 'vllm.model.wait[{#MODELID}]'
               history: 7d
@@ -295,19 +295,19 @@ zabbix_export:
       macros:
         - macro: '{$VLLM.KV.MAX}'
           value: '90'
-          description: 'Порог предупреждения: занятость KV-cache, %'
+          description: 'Warning threshold: KV-cache usage, %'
         - macro: '{$VLLM.METRICS.PATH}'
           value: /metrics
-          description: 'Путь Prometheus-метрик'
+          description: 'Prometheus metrics path'
         - macro: '{$VLLM.PORT}'
           value: '8000'
-          description: 'Порт сервера vLLM'
+          description: 'vLLM server port'
         - macro: '{$VLLM.QUEUE.MAX}'
           value: '5'
-          description: 'Порог предупреждения: длина очереди запросов'
+          description: 'Warning threshold: request queue length'
         - macro: '{$VLLM.TEST.PATH}'
           value: /v1/models
-          description: 'Путь функциональной проверки'
+          description: 'Functional check path'
       valuemaps:
         - uuid: e809cd3e43d74a2a86628409a625bb95
           name: 'Service state'
@@ -319,24 +319,24 @@ zabbix_export:
   triggers:
     - uuid: 6109bdfde82e42d1b5da533a89f58a83
       expression: 'max(/LLM API/vllm.test,5m)=0 and last(/LLM API/vllm.health)=1'
-      name: '/health отвечает, но {$VLLM.TEST.PATH} — сервер запущен, но обрабатывать запросы не может.'
-      event_name: 'vLLM: API не отвечает (/health живой)'
+      name: '/health responds but {$VLLM.TEST.PATH} fails — server is up but cannot process requests.'
+      event_name: 'vLLM: API not responding (/health alive)'
       priority: HIGH
     - uuid: 8050383bed1643d692883001c2b16434
       expression: 'last(/LLM API/net.tcp.service[http,,{$VLLM.PORT}])=0 and max(/LLM API/vllm.health,5m)>0'
-      name: 'TCP-порт сервиса закрыт, при этом /health недавно отвечал (сервер умер, а не сеть). Чистый отказ сети/хоста даст только срабатывание ''сервер не отвечает (/health)''.'
-      event_name: 'vLLM: порт {$VLLM.PORT} недоступен'
+      name: 'Service TCP port is closed while /health answered recently (server process died, not the network). A pure network/host outage will only fire ''server does not respond (/health)''.'
+      event_name: 'vLLM: port {$VLLM.PORT} unreachable'
       priority: DISASTER
   graphs:
     - uuid: 1e22ce6dd614454281b6f9c57ffb6de7
-      name: 'vLLM: KV-cache занятость'
+      name: 'vLLM: KV-cache usage'
       graph_items:
         - color: FF8000
           item:
             host: 'LLM API'
             key: vllm.kv_cache.usage
     - uuid: cf7ed0bb974b4ae5b6f46400314a66d4
-      name: 'vLLM: запросы и очередь'
+      name: 'vLLM: requests and queue'
       graph_items:
         - color: 00C800
           item:
@@ -348,7 +348,7 @@ zabbix_export:
             host: 'LLM API'
             key: vllm.requests.waiting
     - uuid: 4d98b6916e2345f5813dd190a13733cf
-      name: 'vLLM: токены/сек'
+      name: 'vLLM: tokens/sec'
       graph_items:
         - color: 0000FF
           calc_fnc: ALL

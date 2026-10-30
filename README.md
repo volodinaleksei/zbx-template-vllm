@@ -1,72 +1,72 @@
-# Zabbix шаблон: vLLM (LLM API)
+# Zabbix template: vLLM (LLM API)
 
-Мониторинг [vLLM](https://github.com/vllm-project/vllm) OpenAI-совместимого сервера через Zabbix 7.x.
+Monitoring for [vLLM](https://github.com/vllm-project/vllm) OpenAI-compatible servers via Zabbix 7.x.
 
-Шаблон собран для **Zabbix 7.4**, должен работать на 7.0+ (HTTP agent + dependent items + JS preprocessing).
+Built and tested on **Zabbix 7.4**; should work on 7.0+ (HTTP agent + dependent items + JS preprocessing).
 
-## Как это работает
+## How it works
 
-Три master-ITEM'а (тип `HTTP agent`, value `TEXT`, history отключён) забирают сырые ответы,
-остальные ITEM'ы — **dependent** со JS-парсингом:
+Three master items (`HTTP agent`, `TEXT` value type, history disabled) fetch raw responses;
+everything else is **dependent** items with JavaScript preprocessing:
 
-| Master | Эндпоинт | Интервал |
+| Master item | Endpoint | Interval |
 |---|---|---|
 | `vllm.metrics.raw` | `http://{HOST.CONN}:{$VLLM.PORT}{$VLLM.METRICS.PATH}` (Prometheus) | 1m |
 | `vllm.health.raw` | `/health` | 30s |
-| `vllm.test.raw` | `{$VLLM.TEST.PATH}` (по умолчанию `/v1/models`) | 5m |
+| `vllm.test.raw` | `{$VLLM.TEST.PATH}` (default `/v1/models`) | 5m |
 
-Метрики Prometheus парсятся регуляркой внутри JS-шага (Zabbix не умеет нативный Prometheus-парсинг
-в HTTP agent без agent 2, а сервер может быть вообще без доступа к хосту).
+Prometheus metrics are parsed with a regex inside a JS step — Zabbix HTTP agent has no native
+Prometheus parsing without agent 2, and the monitored host may not run an agent at all.
 
-## ITEM'ы
+## Items
 
-- `vllm.requests.running` / `vllm.requests.waiting` — запросы в обработке / в очереди (сумма по движкам)
-- `vllm.kv_cache.usage` — занятость KV-cache, % (из `vllm:kv_cache_usage_perc` ×100)
-- `vllm.ttft.avg` — среднее Time To First Token (`_sum` / `_count`)
-- `vllm.preemptions` — преemption'ы (`vllm:num_preemptions_total`)
-- `vllm.tokens.prompt` / `vllm.tokens.generation` — всего токенов (rate() на графике)
-- `vllm.process.rss` — память процесса
-- `vllm.health` / `vllm.test` — флаги 1/0 доступности эндпоинтов
-- `vllm.models.count` — число моделей из `/v1/models`
-- `net.tcp.service[http,,{$VLLM.PORT}]` — simple check порта
+- `vllm.requests.running` / `vllm.requests.waiting` — requests in flight / queued (summed across engines)
+- `vllm.kv_cache.usage` — KV-cache usage, % (from `vllm:kv_cache_usage_perc` ×100)
+- `vllm.ttft.avg` — average Time To First Token (`_sum` / `_count`)
+- `vllm.preemptions` — `vllm:num_preemptions_total`
+- `vllm.tokens.prompt` / `vllm.tokens.generation` — total tokens (use rate() on graphs)
+- `vllm.process.rss` — process resident memory
+- `vllm.health` / `vllm.test` — 1/0 availability flags
+- `vllm.models.count` — number of models from `/v1/models`
+- `net.tcp.service[http,,{$VLLM.PORT}]` — simple port check
 
-## LLD по моделям
+## LLD (per model)
 
-Правило `vllm.model.discovery` (dependent от `/v1/models`) создаёт на каждую модель:
-в обработке, в очереди, успешных запросов, prompt/generation токенов, размер контекста (`max_model_len`).
+`vllm.model.discovery` (dependent on `/v1/models`) creates per model:
+requests running/queued, successful requests, prompt/generation tokens, context size (`max_model_len`).
 
-## Триггеры
+## Triggers
 
-| Событие | Sev | Условие |
+| Event | Severity | Condition |
 |---|---|---|
-| vLLM: сервер не отвечает (/health) | High | `/health` недоступен 5m |
-| vLLM: порт {$VLLM.PORT} недоступен | High | TCP закрыт, но /health недавно отвечал (умер процесс, не сеть) |
-| vLLM: API не отвечает (/health живой) | Medium | /health есть, но тестовый путь недоступен |
-| vLLM: нет загруженных моделей | Warning | `/v1/models` вернул пустой список |
-| vLLM: затор очереди | Warning | средняя очередь > `{$VLLM.QUEUE.MAX}` за 5m |
-| vLLM: KV-cache > {$VLLM.KV.MAX}% | Warning | риск преemption'ов |
-| vLLM: модель {#MODELID} выгружена | Warning | модель пропала из `/v1/models` |
+| vLLM: server does not respond (/health) | High | `/health` unavailable for 5m |
+| vLLM: port {$VLLM.PORT} unreachable | High | TCP closed while /health answered recently (process died, not network) |
+| vLLM: API not responding (/health alive) | Medium | /health up, test path unavailable |
+| vLLM: no models loaded | Warning | `/v1/models` returned an empty list |
+| vLLM: request queue backlog | Warning | average queue > `{$VLLM.QUEUE.MAX}` over 5m |
+| vLLM: KV-cache > {$VLLM.KV.MAX}% | Warning | risk of preemptions / admission rejections |
+| vLLM: model {#MODELID} unloaded | Warning | model disappeared from `/v1/models` |
 
-## Макросы
+## Macros
 
-| Макрос | По умолчанию | Назначение |
+| Macro | Default | Purpose |
 |---|---|---|
-| `{$VLLM.PORT}` | `8000` | порт сервера |
-| `{$VLLM.METRICS.PATH}` | `/metrics` | путь Prometheus-метрик |
-| `{$VLLM.TEST.PATH}` | `/v1/models` | путь функциональной проверки |
-| `{$VLLM.QUEUE.MAX}` | `5` | порог предупреждения: очередь |
-| `{$VLLM.KV.MAX}` | `90` | порог предупреждения: KV-cache, % |
+| `{$VLLM.PORT}` | `8000` | vLLM server port |
+| `{$VLLM.METRICS.PATH}` | `/metrics` | Prometheus metrics path |
+| `{$VLLM.TEST.PATH}` | `/v1/models` | functional check path |
+| `{$VLLM.QUEUE.MAX}` | `5` | queue warning threshold |
+| `{$VLLM.KV.MAX}` | `90` | KV-cache warning threshold, % |
 
-## Установка
+## Setup
 
 1. Import `template_vllm.yaml` (Data collection → Templates → Import).
-2. Создайте хост, interface: **Agent**, IP сервера vLLM (используется только как `{HOST.CONN}`;
-   агент на хосте не нужен — все ITEM'ы HTTP/simple check).
-3. Привяжите шаблон. При HTTPS/авторизации отредактируйте master-ITEM'ы вручную.
+2. Create a host with an **Agent** interface set to the vLLM server IP — it is used only as
+   `{HOST.CONN}`; no agent is required, all items are HTTP agent / simple checks.
+3. Link the template. For HTTPS or auth, edit the master items manually.
 
-Проверено живым поллингом против vLLM с моделью `qwen3-vl-8b`.
+Verified with live polling against a vLLM server running `qwen3-vl-8b`.
 
 ## Grafana
 
-Метрики на сервере стандартные Prometheus-имена (`vllm:*`) — если нужен дашборд,
-Grafana может читать `/metrics` напрямую, этот шаблон её не заменяет, а дополняет алертингом.
+The metrics are standard Prometheus names (`vllm:*`) — Grafana can scrape `/metrics` directly.
+This template is complementary alerting, not a Grafana replacement.
